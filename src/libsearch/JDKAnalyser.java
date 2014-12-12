@@ -17,7 +17,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Predicate;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -230,11 +229,10 @@ public class JDKAnalyser {
             .forEach(m -> output.println(m)));
 
     /* Determine the Stream source stats and print them out */
-    LongAdder sourceCount = new LongAdder();
-
-    sourceKeySet.stream()
-        .forEach(c -> sourceCount.add(streamReturningMethodMap.get(c).size()));
-
+    long sourceCount = sourceKeySet.stream()
+        .mapToInt(c -> streamReturningMethodMap.get(c).size())
+        .sum();
+    
     System.out.println("Stream sources/intermediate operations: "
         + sourceCount + " methods in "
         + streamReturningMethodMap.size() + " classes");
@@ -249,22 +247,23 @@ public class JDKAnalyser {
     output.println("Methods that can use Lambda expressions for parameters");
     output.println("======================================================\n");
     Set<String> functionalKeySet = functionalParameterMethodMap.keySet();
-    LongAdder newMethodCount = new LongAdder();
 
     /**
      * Print out each class that has valid methods and keep track of the total
      * number of methods
      */
-    functionalKeySet.stream()
+    long newMethodCount = functionalKeySet.stream()
         .filter(c -> !(ignoreStreamPackage && c.startsWith(STREAM_PACKAGE)))
-        .forEach(c -> newMethodCount.add(printClass(output, c)));
+        .mapToInt(c -> printClass(output, c))
+        .sum();
 
     /* Determine the stats for Lambda usage and print them out */
-    LongAdder methodCount = new LongAdder();
-    functionalKeySet.stream()
-        .forEach(c -> methodCount.add(functionalParameterMethodMap.get(c).size()));
-    System.out.println("Lambda usage: " + methodCount.intValue()
-        + " methods (of which " + newMethodCount.intValue()
+    long methodCount = functionalKeySet.stream()
+        .mapToInt(c -> functionalParameterMethodMap.get(c).size())
+        .sum();
+    
+    System.out.println("Lambda usage: " + methodCount
+        + " methods (of which " + newMethodCount
         + " are new) in " + functionalParameterMethodMap.size() + " classes");
   }
 
@@ -275,27 +274,29 @@ public class JDKAnalyser {
    * @param c The name of the class to print details of
    */
   private int printClass(PrintWriter output, String c) {
-    LongAdder newMethodCount = new LongAdder();
     output.println(c);
     output.println(UNDERLINE.substring(0, c.length()));
 
     /* Get a Stream of Methods from this class */
-    functionalParameterMethodMap.get(c).stream()
-        .forEach(m -> {
+    int newMethodCount = functionalParameterMethodMap.get(c).stream()
+        .mapToInt(m -> {
+          int newMethod = 0;
           output.print(m);
 
           if (isNewMethod(c, m)) {
-            newMethodCount.increment();
+            newMethod = 1;
 
             if (markNew)
               output.print(" NEW");
           }
 
           output.println();
-        });
+          return newMethod;
+        })
+        .sum();
 
     output.println();
-    return newMethodCount.intValue();
+    return newMethodCount;
   }
 
   /**
@@ -402,17 +403,12 @@ public class JDKAnalyser {
     /* Get the array of methods that this interface has defined in it */
     Method[] methods = type.getDeclaredMethods();
 
-    /* Thread safe (and efficient) counter */
-    LongAdder abstractCount = new LongAdder();
-
-    Arrays.stream(methods)
+    if (Arrays.stream(methods)
         .parallel()
         .filter(m -> !m.getName().contains("$")) // Ignore synthetic refs
         .filter(m -> !m.isDefault()) // Ignore default methods
         .filter(m -> !Modifier.isStatic(m.getModifiers())) // And static methods
-        .forEach(m -> abstractCount.increment());
-
-    if (abstractCount.intValue() == 1)
+        .count() == 1)
       return true;
     return false;
   }
