@@ -1,0 +1,19 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'com.github.johnrengelman.shadow' version '1.2.0'
+}
+
+mainClassName = 'libsearch.Main'
+
+repositories {
+    flatDir { dir 'lib' }
+}
+
+dependencies {
+    compile ':commons-cli:1.2'
+}
+
+sourceSets {
+    main.java.srcDirs = files('src')
+}
